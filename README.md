@@ -67,7 +67,7 @@ To build for the web: **File → Build Profiles → Web**, then build and upload
 -- inhalte exhale: https://freesound.org/people/Sounds_Fab/sounds/813664/
 -- ad jingle: Happy bouncey guitar audio logo (artxmpl-al-03) high by artxmp1 -- https://freesound.org/s/661921/ -- License: Attribution 4.0
 
--- ad voice lines: [Mixamo]
+-- ad voice lines: [ElevenLabs]
 
 
 --models: [Sketchfab]
