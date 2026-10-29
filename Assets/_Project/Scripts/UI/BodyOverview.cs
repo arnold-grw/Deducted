@@ -90,6 +90,15 @@ namespace Deducted.UI
             RefreshName();
         }
 
+        private void OnEnable() => PauseMenu.PauseChanged += OnPauseChanged;
+        private void OnDisable() => PauseMenu.PauseChanged -= OnPauseChanged;
+
+        // Pausing closes the overview (no sound, the pause menu has its own), so Resume goes straight back to the game.
+        private void OnPauseChanged(bool paused)
+        {
+            if (paused && isOpen) SetOpen(false, false);
+        }
+
         private void OnDestroy()
         {
             if (BalanceManager.Instance != null)
@@ -102,7 +111,10 @@ namespace Deducted.UI
         private void Update()
         {
             Keyboard kb = Keyboard.current;
-            if (kb != null && kb.tabKey.wasPressedThisFrame)
+            // No overview during NPC talks.
+            if (kb != null && (kb.tabKey.wasPressedThisFrame || kb.eKey.wasPressedThisFrame) && !Deducted.NPC.DialogueSystem.IsOpen
+                && !PauseMenu.BlocksInput
+                && Deducted.NPC.DialogueSystem.ClosedFrame != Time.frameCount) // that Tab closed a talk
                 SetOpen(!IsOpen);
 
             UpdateFade();
@@ -122,12 +134,14 @@ namespace Deducted.UI
                 root.SetActive(false);
         }
 
-        public void SetOpen(bool open)
+        public void SetOpen(bool open) => SetOpen(open, true);
+
+        public void SetOpen(bool open, bool playSound)
         {
             if (root == null || open == isOpen) return;
             isOpen = open;
             if (open) root.SetActive(true);
-            Deducted.Audio.UISound.Play(open || closeSound == null ? openSound : closeSound, soundVolume);
+            if (playSound) Deducted.Audio.UISound.Play(open || closeSound == null ? openSound : closeSound, soundVolume);
 
             if (blockMovement && playerMovement != null)
             {

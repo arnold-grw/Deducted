@@ -1,6 +1,7 @@
 // Full-screen 1-bit pass: pixelates the screen to a low resolution and
 // reduces every pixel to pure black or white using a brightness threshold,
 // with optional ordered (Bayer) dithering for in-between greys.
+// Black and white can be swapped for any two colours (Dark / Light Colour).
 // Used by a Full Screen Pass Renderer Feature on the URP renderer.
 Shader "Deducted/OneBit"
 {
@@ -14,6 +15,10 @@ Shader "Deducted/OneBit"
         _WhitePoint ("White Point (brighter = pure white)", Range(0, 1)) = 0.95
         [Toggle] _Invert ("Invert", Float) = 0
         [Toggle] _Pixelate ("Pixelate", Float) = 1
+
+        [Header(Colours)]
+        _DarkColor ("Dark Colour (replaces black)", Color) = (0, 0, 0, 1)
+        _LightColor ("Light Colour (replaces white)", Color) = (1, 1, 1, 1)
 
         [Header(Dithering)]
         _DitherStrength ("Dither Strength", Range(0, 1)) = 1
@@ -48,6 +53,8 @@ Shader "Deducted/OneBit"
             float _DitherStrength;
             float _DitherSize;
             float _DitherScale;
+            half4 _DarkColor;
+            half4 _LightColor;
 
             // Recursive Bayer matrix, returns a threshold in [0, 1) for an integer pixel coordinate.
             float Bayer2(float2 p)
@@ -107,7 +114,8 @@ Shader "Deducted/OneBit"
                 half bit = luma > cutoff ? 1.0 : 0.0;
                 bit = lerp(bit, 1.0 - bit, step(0.5, _Invert));
 
-                return half4(bit, bit, bit, 1.0);
+                // Still only two colours: the dark and the light one picked on the material.
+                return half4(lerp(_DarkColor.rgb, _LightColor.rgb, bit), 1.0);
             }
             ENDHLSL
         }

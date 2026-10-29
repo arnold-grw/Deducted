@@ -78,6 +78,14 @@ namespace Deducted.Player
             if (particles != null) particles.Stop(true, ParticleSystemStopBehavior.StopEmitting);
         }
 
+        /// <summary>Stops every effect and clears its particles right away (action interrupted).</summary>
+        public void StopAll()
+        {
+            foreach (Effect effect in effects)
+                if (effect.particles != null)
+                    effect.particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
         private ParticleSystem Find(string effectName)
         {
             foreach (Effect effect in effects)

@@ -61,6 +61,11 @@ namespace Deducted.Player
         [Tooltip("How fast idle blends into dancing near a speaker.")]
         [SerializeField] private float danceBlendTime = 0.3f;
 
+        [Header("Sounds")]
+        [Tooltip("Played on death, always on both ears (even when deaf).")]
+        [SerializeField] private AudioClip deathSound;
+        [SerializeField, Range(0f, 1f)] private float deathVolume = 1f;
+
         [Header("Debug")]
         [Tooltip("Editor only: 1-5 = form, K = death.")]
         [SerializeField] private bool debugKeys = true;
@@ -72,9 +77,13 @@ namespace Deducted.Player
         private static readonly int DeadHash = Animator.StringToHash("Dead");
         private static readonly int DanceHash = Animator.StringToHash("Dance");
         private static readonly int SmokeHash = Animator.StringToHash("Smoke");
+        private static readonly int HurtHash = Animator.StringToHash("Hurt");
 
         private PlayerMovement movement;
         private Coroutine actionRoutine;
+        private Cigarettes cigarettes;
+        private bool actionIsSmoke;
+        private bool isHurting;
 
         public MovementForm Form
         {
@@ -110,6 +119,8 @@ namespace Deducted.Player
         private void Awake()
         {
             movement = GetComponent<PlayerMovement>();
+            cigarettes = GetComponent<Cigarettes>();
+            if (cigarettes == null) cigarettes = gameObject.AddComponent<Cigarettes>();
             if (animator == null)
                 animator = GetComponentInChildren<Animator>();
             if (animator != null)
@@ -118,11 +129,12 @@ namespace Deducted.Player
 
         private void Update()
         {
+            bool inputBlocked = Deducted.UI.PauseMenu.BlocksInput;
 #if UNITY_EDITOR
-            if (debugKeys) HandleDebugKeys();
+            if (debugKeys && !inputBlocked) HandleDebugKeys();
 #endif
             Keyboard kb = Keyboard.current;
-            if (kb != null && smokeKey != Key.None && kb[smokeKey].wasPressedThisFrame) Smoke();
+            if (kb != null && !inputBlocked && smokeKey != Key.None && kb[smokeKey].wasPressedThisFrame) Smoke();
 
             FormSettings settings = GetSettings(form);
             movement.SpeedMultiplier = settings.moveSpeedMultiplier;
@@ -158,14 +170,63 @@ namespace Deducted.Player
         }
 
         /// <summary>
-        /// Light a cigarette: plays the smoke animation and locks movement like interact.
-        /// Standing forms only (no crawling clip). Later this can cost money or give effects.
+        /// Light a cigarette: uses one from Cigarettes (none left = nothing happens), plays the smoke
+        /// animation and locks movement like interact. The leg effect lasts its full time after the animation.
+        /// Standing forms only (no crawling clip).
         /// </summary>
         public void Smoke()
         {
             if (IsDead || IsInteracting || IsCrawling || !movement.InputEnabled) return;
             float duration = smokeDuration > 0f ? smokeDuration : ClipLength("smoke", 3f) * 0.9f;
+            if (!cigarettes.TryUse()) return; // pack is empty
+            // Effect starts now (covering the animation too), so the Animator already knows the new form
+            // when the smoke clip ends and goes straight to that idle instead of passing the old one.
+            cigarettes.ApplyEffect(duration);
             actionRoutine = StartCoroutine(ActionRoutine(SmokeHash, duration));
+            actionIsSmoke = true;
+        }
+
+        /// <summary>
+        /// Stops interact / smoke right away (e.g. the Collector grabs the player): movement is free again,
+        /// props are hidden and particles cleared. Smoking also loses its leg effect; the cigarette stays used.
+        /// </summary>
+        public void CancelAction() => CancelAction(true);
+
+        // snapBack false = leave the Animator where it is (another action starts right after).
+        private void CancelAction(bool snapBack)
+        {
+            if (actionRoutine == null) return;
+            StopCoroutine(actionRoutine);
+            actionRoutine = null;
+            movement.Unlock(this);
+            if (actionIsSmoke) cigarettes.CancelEffect();
+            actionIsSmoke = false;
+            isHurting = false;
+
+            if (animator != null)
+            {
+                animator.ResetTrigger(SmokeHash);
+                animator.ResetTrigger(InteractHash);
+                animator.ResetTrigger(HurtHash);
+                // Straight back to the locomotion state of the current form (states are named after the forms).
+                int state = Animator.StringToHash(form.ToString());
+                if (snapBack && !IsDead && animator.HasState(0, state)) animator.CrossFadeInFixedTime(state, 0.15f);
+            }
+            foreach (AnimationProps props in GetComponentsInChildren<AnimationProps>()) props.HideAll();
+            foreach (AnimationEffects effects in GetComponentsInChildren<AnimationEffects>()) effects.StopAll();
+        }
+
+        /// <summary>
+        /// Flinch when an eye or ear is taken (sold, traded in or reclaimed; called by PlayerBody).
+        /// Interrupts smoking / interacting and locks movement for the clip. Standing forms only.
+        /// </summary>
+        public void Hurt()
+        {
+            if (IsDead || IsCrawling || isHurting) return;
+            CancelAction(false);
+            float duration = ClipLength("hurt", 1.5f) * 0.9f;
+            isHurting = true;
+            actionRoutine = StartCoroutine(ActionRoutine(HurtHash, duration));
         }
 
         /// <summary>Play the death animation and stop all input. No revives.</summary>
@@ -175,16 +236,20 @@ namespace Deducted.Player
             IsDead = true;
             movement.InputEnabled = false;
             if (animator != null) animator.SetBool(DeadHash, true);
+            Deducted.Audio.UISound.Play(deathSound, deathVolume);
         }
 
         // trigger 0 = no animation, only the movement lock.
-        private IEnumerator ActionRoutine(int trigger, float duration)
+        private IEnumerator ActionRoutine(int trigger, float duration, System.Action onDone = null)
         {
             movement.Lock(this);
             if (animator != null && trigger != 0) animator.SetTrigger(trigger);
             yield return new WaitForSeconds(duration);
             movement.Unlock(this);
             actionRoutine = null;
+            actionIsSmoke = false;
+            isHurting = false;
+            if (!IsDead) onDone?.Invoke();
         }
 
         private float ClipLength(string clipName, float fallback)

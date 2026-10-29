@@ -10,7 +10,8 @@ namespace Deducted.Audio
     /// right after it. Subscribing an ear plays the Welcome Ad; after that a random ad (never the same twice
     /// in a row) every few seconds, more often when both ears are rented. Every ad plays in one ear only:
     /// the welcome ad in the ear just rented, the others in a rented ear (random one when both are rented).
-    /// Only one ad at a time. Keeps running in the Tab menu, during animations and pauses.
+    /// Only one ad at a time. Keeps running in the Tab menu and during animations; the pause menu cuts the
+    /// ad off and the timer starts over after it.
     /// </summary>
     public class EarAds : MonoBehaviour
     {
@@ -35,6 +36,7 @@ namespace Deducted.Audio
         private float nextAdTime;
         private int lastAd = -1;
         private BodyPartId adEar;
+        private bool wasPaused;
 
         private bool LeftRented => body != null && body.GetState(BodyPartId.LeftEar) == BodyPartState.Synthetic;
         private bool RightRented => body != null && body.GetState(BodyPartId.RightEar) == BodyPartState.Synthetic;
@@ -71,12 +73,25 @@ namespace Deducted.Audio
         {
             if (part != BodyPartId.LeftEar && part != BodyPartId.RightEar) return;
 
-            if (state == BodyPartState.Synthetic) StartAd(welcomeAd, part);
+            if (state == BodyPartState.Synthetic && !Deducted.UI.PauseMenu.IsPaused) StartAd(welcomeAd, part);
             else if (playing != null && part == adEar) StopAd(); // the ear playing the ad is gone
         }
 
         private void Update()
         {
+            // Pause menu: no ads; the running one is cut off (StopAd restarts the timer after the pause).
+            if (Deducted.UI.PauseMenu.IsPaused)
+            {
+                if (playing != null) StopAd();
+                wasPaused = true;
+                return;
+            }
+            if (wasPaused)
+            {
+                wasPaused = false;
+                ScheduleNext(); // full wait again after the pause
+            }
+
             bool left = LeftRented, right = RightRented;
             if (!left && !right) return;
 

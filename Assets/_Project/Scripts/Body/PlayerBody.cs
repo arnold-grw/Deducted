@@ -11,6 +11,9 @@ namespace Deducted.Body
     /// The player's body: which parts are organic, synthetic (subscription) or missing.
     /// Selling pays out via BalanceManager, synthetic parts run via SubscriptionManager.
     /// Legs decide the movement form; eyes and ears are read by VisionOverlay and Hearing.
+    /// Two layers: the owned state changes at once (money, shops), the felt state (GetState, Works,
+    /// PartChanged, movement form) follows only when no dialogue / shop is open, so selling an ear
+    /// in a shop is heard after leaving it. Losing an organic eye or ear plays the hurt animation.
     /// </summary>
     public class PlayerBody : MonoBehaviour
     {
@@ -26,13 +29,28 @@ namespace Deducted.Body
             new BodyPartConfig(BodyPartId.RightLeg, "Right Leg", 400, "MotionCore Leg (R)", 3f),
         };
 
+        [Header("Sounds (always heard, even when deaf)")]
+        [Tooltip("When the Collector takes a part. Both ears.")]
+        [SerializeField] private AudioClip reclaimSound;
+        [Tooltip("When an ear goes deaf (sold, reclaimed, subscription ended). Only on that ear; after leaving a shop.")]
+        [SerializeField] private AudioClip earLostSound;
+        [SerializeField, Range(0f, 1f)] private float soundVolume = 1f;
+
         [Header("Debug")]
         [Tooltip("Editor only: F1-F6 sell part, Shift+F1-F6 toggle subscription (on from organic or missing, off -> missing).")]
         [SerializeField] private bool debugKeys = true;
 
         private readonly Dictionary<BodyPartId, BodyPartState> states = new Dictionary<BodyPartId, BodyPartState>();
+        private readonly Dictionary<BodyPartId, BodyPartState> felt = new Dictionary<BodyPartId, BodyPartState>();
+        private bool changesPending;
+        private float legBoostUntil = -1f;
+        private bool legBoostWasActive;
 
-        /// <summary>Fired when any part changes state: (part, new state).</summary>
+        /// <summary>True while the legs work one step better (cigarette effect).</summary>
+        public bool LegBoostActive => Time.time < legBoostUntil;
+        public float LegBoostRemaining => Mathf.Max(0f, legBoostUntil - Time.time);
+
+        /// <summary>Fired when the felt state of a part changes: (part, new state). Waits until dialogues close.</summary>
         public event Action<BodyPartId, BodyPartState> PartChanged;
 
         private void Reset()
@@ -44,7 +62,10 @@ namespace Deducted.Body
         {
             if (playerAnimator == null) playerAnimator = GetComponent<PlayerAnimator>();
             foreach (BodyPartId id in Enum.GetValues(typeof(BodyPartId)))
+            {
                 states[id] = BodyPartState.Organic;
+                felt[id] = BodyPartState.Organic;
+            }
         }
 
         private void Start()
@@ -53,7 +74,11 @@ namespace Deducted.Body
         }
 
         // Safe to call before Awake (other scripts may ask during their OnEnable).
+        /// <summary>What the player feels right now (effects: vision, hearing, legs, visuals).</summary>
         public BodyPartState GetState(BodyPartId id) =>
+            felt.TryGetValue(id, out var state) ? state : BodyPartState.Organic;
+        /// <summary>What the player owns right now, even if a shop hasn't let it take effect yet.</summary>
+        public BodyPartState GetOwnedState(BodyPartId id) =>
             states.TryGetValue(id, out var state) ? state : BodyPartState.Organic;
         public bool Works(BodyPartId id) => GetState(id) != BodyPartState.Missing;
         public BodyPartConfig GetConfig(BodyPartId id) => parts.Find(p => p.id == id);
@@ -83,6 +108,21 @@ namespace Deducted.Body
             return true;
         }
 
+        /// <summary>
+        /// Collector: takes an organic part by force and pays payoutFraction of its VITALIS price.
+        /// Synthetic and missing parts can't be taken.
+        /// </summary>
+        public bool Reclaim(BodyPartId id, float payoutFraction)
+        {
+            if (states[id] != BodyPartState.Organic) return false;
+            var config = GetConfig(id);
+            int payout = Mathf.RoundToInt(config.sellPrice * payoutFraction);
+            BalanceManager.Instance?.Apply($"COLLECTOR reclaim: {config.displayName}", payout);
+            Deducted.Audio.UISound.Play(reclaimSound, soundVolume);
+            SetState(id, BodyPartState.Missing);
+            return true;
+        }
+
         /// <summary>Synthetic -> stop the subscription (part is missing again), otherwise subscribe.</summary>
         public bool ToggleSubscription(BodyPartId id) =>
             states[id] == BodyPartState.Synthetic ? CancelSubscription(id) : Subscribe(id);
@@ -99,28 +139,69 @@ namespace Deducted.Body
         private void SetState(BodyPartId id, BodyPartState state)
         {
             states[id] = state;
-            PartChanged?.Invoke(id, state);
-            if (id == BodyPartId.LeftLeg || id == BodyPartId.RightLeg)
-                UpdateMovementForm();
+            changesPending = true;
+            if (!Deducted.NPC.DialogueSystem.IsOpen) ApplyPendingChanges();
+        }
+
+        // Owned -> felt for every part that changed; fires PartChanged, updates the legs, plays hurt.
+        private void ApplyPendingChanges()
+        {
+            changesPending = false;
+            bool hurt = false;
+            bool legs = false;
+            foreach (BodyPartId id in Enum.GetValues(typeof(BodyPartId)))
+            {
+                BodyPartState before = felt[id];
+                BodyPartState now = states[id];
+                if (before == now) continue;
+                felt[id] = now;
+                if (id == BodyPartId.LeftLeg || id == BodyPartId.RightLeg) legs = true;
+                else if (before == BodyPartState.Organic) hurt = true; // an eye or ear was taken
+                // Ear goes deaf (not when swapped for a synthetic one): sound on that ear only.
+                if (now == BodyPartState.Missing && (id == BodyPartId.LeftEar || id == BodyPartId.RightEar))
+                    Deducted.Audio.UISound.Play(earLostSound, soundVolume, id == BodyPartId.LeftEar ? -1f : 1f);
+                PartChanged?.Invoke(id, now);
+            }
+            if (legs) UpdateMovementForm();
+            if (hurt && playerAnimator != null) playerAnimator.Hurt();
         }
 
         /// <summary>
         /// Legs -> movement form:
         /// both organic = Normal, one synthetic = Injured, both synthetic = InjuredHeavy (limp),
         /// one missing = CrawlAllFours, both missing = CrawlLow.
+        /// During a leg boost synthetic legs count one step better (Injured -> Normal, InjuredHeavy -> Injured),
+        /// always from the current legs, so swapping a leg mid-boost gives the right result.
         /// </summary>
         public MovementForm GetLegForm()
         {
-            BodyPartState l = states[BodyPartId.LeftLeg];
-            BodyPartState r = states[BodyPartId.RightLeg];
+            BodyPartState l = felt[BodyPartId.LeftLeg];
+            BodyPartState r = felt[BodyPartId.RightLeg];
             int missing = (l == BodyPartState.Missing ? 1 : 0) + (r == BodyPartState.Missing ? 1 : 0);
             int synthetic = (l == BodyPartState.Synthetic ? 1 : 0) + (r == BodyPartState.Synthetic ? 1 : 0);
 
             if (missing == 2) return MovementForm.CrawlLow;
             if (missing == 1) return MovementForm.CrawlAllFours;
-            if (synthetic == 2) return MovementForm.InjuredHeavy;
+            if (LegBoostActive) synthetic--;
+            if (synthetic >= 2) return MovementForm.InjuredHeavy;
             if (synthetic == 1) return MovementForm.Injured;
             return MovementForm.Normal;
+        }
+
+        /// <summary>Legs work one step better for this many seconds. Calling again restarts the timer.</summary>
+        public void BoostLegs(float seconds)
+        {
+            legBoostUntil = Time.time + seconds;
+            legBoostWasActive = true;
+            UpdateMovementForm();
+        }
+
+        /// <summary>Ends the leg boost right away (smoking interrupted by the Collector).</summary>
+        public void CancelLegBoost()
+        {
+            legBoostUntil = -1f;
+            legBoostWasActive = false;
+            UpdateMovementForm();
         }
 
         private void UpdateMovementForm()
@@ -129,8 +210,24 @@ namespace Deducted.Body
                 playerAnimator.Form = GetLegForm();
         }
 
-#if UNITY_EDITOR
         private void Update()
+        {
+            // Purchases made in a dialogue / shop take effect once it's closed.
+            if (changesPending && !Deducted.NPC.DialogueSystem.IsOpen) ApplyPendingChanges();
+
+            // Back to the normal form when the boost runs out.
+            if (legBoostWasActive && !LegBoostActive)
+            {
+                legBoostWasActive = false;
+                UpdateMovementForm();
+            }
+#if UNITY_EDITOR
+            if (!Deducted.UI.PauseMenu.BlocksInput) HandleDebugKeys();
+#endif
+        }
+
+#if UNITY_EDITOR
+        private void HandleDebugKeys()
         {
             if (!debugKeys) return;
             Keyboard kb = Keyboard.current;

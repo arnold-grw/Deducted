@@ -17,8 +17,19 @@ namespace Deducted.UI
         [SerializeField] private Camera targetCamera;
         [Tooltip("How far past the near clip plane the canvas sits.")]
         [SerializeField, Min(0.001f)] private float offset = 0.05f;
+        [Tooltip("Minimum height of the canvas in the world (m). TextMeshPro text disappears when the canvas gets " +
+                 "too small (close camera with a narrow FOV, e.g. the interaction camera), so it is pushed further " +
+                 "away until it is at least this tall. Things closer to the camera than that can cover the UI.")]
+        [SerializeField, Min(0f)] private float minWorldHeight = 0.5f;
 
         private Canvas canvas;
+
+        /// <summary>For canvases made from code (e.g. ScreenFade): 0 = always right at the near clip plane.</summary>
+        public float MinWorldHeight
+        {
+            get => minWorldHeight;
+            set => minWorldHeight = Mathf.Max(0f, value);
+        }
 
         private void OnEnable()
         {
@@ -32,7 +43,14 @@ namespace Deducted.UI
 
             canvas.renderMode = RenderMode.ScreenSpaceCamera;
             canvas.worldCamera = cam;
-            canvas.planeDistance = cam.nearClipPlane + offset;
+            float distance = cam.nearClipPlane + offset;
+            if (!cam.orthographic && minWorldHeight > 0f)
+            {
+                // Height of the view at distance d: 2 * d * tan(fov / 2).
+                float tan = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+                distance = Mathf.Max(distance, minWorldHeight / (2f * tan));
+            }
+            canvas.planeDistance = distance;
         }
     }
 }

@@ -72,6 +72,17 @@ namespace Deducted.Player
             prop.target.SetActive(false);
         }
 
+        /// <summary>Hides every prop right away (action interrupted).</summary>
+        public void HideAll()
+        {
+            foreach (Prop prop in props)
+            {
+                if (prop.hideRoutine != null) StopCoroutine(prop.hideRoutine);
+                prop.hideRoutine = null;
+                if (prop.target != null) prop.target.SetActive(false);
+            }
+        }
+
         private IEnumerator HideAfter(Prop prop, float seconds)
         {
             yield return new WaitForSeconds(seconds);

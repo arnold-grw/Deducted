@@ -9,7 +9,7 @@ namespace Deducted.EditorTools
     /// <summary>
     /// Menu: Deducted > Build Player Animator.
     /// Sets the Mixamo FBX import settings (Humanoid, shared avatar, loop, in place)
-    /// and (re)builds AC_Player with all locomotion forms, interact, smoke and death.
+    /// and (re)builds AC_Player with all locomotion forms, interact, smoke, hurt and death.
     /// Safe to run again after adding or swapping clips.
     /// </summary>
     public static class PlayerAnimatorBuilder
@@ -34,6 +34,7 @@ namespace Deducted.EditorTools
             { "death_low", false },
             { "dancing", true },
             { "smoke", false },
+            { "hurt", false },
         };
 
         [MenuItem("Deducted/Build Player Animator")]
@@ -118,6 +119,7 @@ namespace Deducted.EditorTools
             controller.AddParameter("Dead", AnimatorControllerParameterType.Bool);
             controller.AddParameter("Dance", AnimatorControllerParameterType.Float);
             controller.AddParameter("Smoke", AnimatorControllerParameterType.Trigger);
+            controller.AddParameter("Hurt", AnimatorControllerParameterType.Trigger);
             // MotionSpeed must default to 1 or everything starts paused.
             var parameters = controller.parameters;
             foreach (var p in parameters)
@@ -193,6 +195,24 @@ namespace Deducted.EditorTools
             for (int i = 0; i < forms.Count; i++)
             {
                 var back = smoke.AddTransition(forms[i]);
+                back.hasExitTime = true;
+                back.exitTime = 0.9f;
+                back.duration = 0.25f;
+                back.AddCondition(AnimatorConditionMode.Equals, i, "Form");
+            }
+
+            // Hurt (eye / ear taken): from any standing state, also cuts into smoke / interact.
+            var hurt = sm.AddState("Hurt", new Vector3(550, 200));
+            hurt.motion = LoadClip("hurt");
+            var toHurt = sm.AddAnyStateTransition(hurt);
+            toHurt.hasExitTime = false;
+            toHurt.duration = 0.1f;
+            toHurt.canTransitionToSelf = false;
+            toHurt.AddCondition(AnimatorConditionMode.If, 0, "Hurt");
+            toHurt.AddCondition(AnimatorConditionMode.Less, StandingFormCount, "Form");
+            for (int i = 0; i < forms.Count; i++)
+            {
+                var back = hurt.AddTransition(forms[i]);
                 back.hasExitTime = true;
                 back.exitTime = 0.9f;
                 back.duration = 0.25f;
