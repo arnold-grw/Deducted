@@ -1,87 +1,37 @@
 # DEDUCTED
 
-A 1-bit, third-person descent through a dystopian megastructure, where every passage has a price and the only thing you have left to sell is yourself.
+![DEDUCTED in-game screenshot](Docs/screenshot_1.png)
 
-Made in one week for the 15th 1-BIT game jam. https://itch.io/jam/1-bit-jam-15
-**Theme:** *Everything has a price* · **Limitation:** *1-bit (black and white only)*
+A 1-bit, third-person descent through a dystopian city block. Your account balance is your health: sell your body to VITALIS, rent it back from CONTINUUM by the second, and keep the balance above zero or the collectors take what is left of you.
 
-## Concept
+Made in 7 days for the [15th 1-Bit Game Jam](https://itch.io/jam/1-bit-jam-15) · Theme: *Everything has a price*
 
-You are released from a facility with no memory and an almost empty account. To move through the city, you pay tolls at gates. To pay tolls, you sell your body to corporate terminals, or swap parts for synthetic replacements that charge you by the second.
+> **Note:** For now, this repository contains an **outdated, incomplete snapshot** of the project, **not the released version**. It only includes the test scene and the basic components: the player with the different body states, NPCs and the collector enemies. Finished levels and the main menu are not part of it.
 
-- **Sell** a part to VITALIS Reclamation: more money, lose the ability for good
-- **Swap / ** a part at CONTINUUM Prosthetics: keep the ability, pay a subscription
-- **Pay** the Passage Authority to open gates
+## Tech stack
 
-Fall into debt and the collectors come for what's left of you. There are no revives. Learn the city, learn the deals, and find the route up.
+- Unity **6000.3.15f1** (Unity 6), URP **17.3.0**
+- Input System **1.19.0** (new Input System only), AI Navigation **2.0.12**, uGUI + TextMeshPro
+- Targets: Web (itch.io) and Windows
 
-## Controls
+## What's in here
 
-| Input | Action |
-|---|---|
-| WASD | Move |
-| Hold F | Confirm transaction |
-| Tab / E | Open status menu (body, balance, subscriptions) |
+All code lives in `Assets/_Project/Scripts/<Area>/` (namespace `Deducted.<Area>`); values are serialized fields with tooltips.
 
-## Tech
+- **Economy:** `BalanceManager` is the single transaction rule (every deal becomes a receipt line); `SubscriptionManager` bills synthetic parts per second.
+- **Body:** `PlayerBody` with six parts (eyes, ears, legs), each *Organic*, *Synthetic* or *Missing*. Missing eyes black out half the screen, missing ears mute a side, legs change the movement form.
+- **NPCs and shops:** page-based dialogues with shop pages (sell parts, rent synthetic ones, buy cigarettes, sell your name) and hold-to-buy.
+- **Collectors:** NavMesh enemies that hunt the player once the balance is negative and reclaim organic parts on contact.
+- **Rendering:** a full-screen 1-bit pass (`Shaders/OneBit.shader`, pixelation + Bayer dithering, two colours) as a URP Full Screen Pass Renderer Feature. UI canvases are rendered through the camera so they are dithered too.
+- **Editor tools:** menu *Deducted/* builds most of the UI from code.
 
-- Unity 6, Universal Render Pipeline
-- Low-resolution render target with ordered (Bayer) dithering to 1-bit
-- Fixed security-camera perspective
-- Target platform: Web (itch.io), Windows as fallback
+## Running
 
-## Project structure
+1. Open the `Deducted/` folder with Unity **6000.3.15f1**.
+2. Open `Assets/_Project/Scenes/Test.unity` and press Play.
 
-```
-Assets/
-  _Project/
-    Scenes/       Levels and test scenes
-    Scripts/      Gameplay code (economy, interaction, player, collectors)
-    Shaders/      1-bit dither and outline shaders
-    Materials/
-    Models/       Player, clerks, environment
-    Audio/
-    UI/
-  ThirdParty/     Imported assets (see Credits)
-```
-
-## Running the project
-
-1. Open the project with Unity 6 (URP).
-2. Open `Assets/_Project/Scenes/Main.unity`.
-3. Press Play.
-
-To build for the web: **File → Build Profiles → Web**, then build and upload the zipped build folder to itch.io.
+Binary assets are stored with Git LFS.
 
 ## Credits
 
---animations: [Mixamo](https://www.mixamo.com/)
-
-
---sounds: [Freesound.org]
--- Techno loop: techno rumble beat 127 bpm.wav by deleted_user_2428730 -- https://freesound.org/s/455025/ -- License: Attribution NonCommercial 4.0
--- open menu: External-storage-enclosure-switch-on-and-hard-drive-spin-up.wav by micropolis -- https://freesound.org/s/637061/ -- License: Attribution 4.0
--- steps: Walking In Socks by IENBA -- https://freesound.org/s/864782/ -- License: Creative Commons 0
--- robot step: Robot walk, looped by Magnesus -- https://freesound.org/s/729437/ -- License: Creative Commons 0
--- heavy robot step: MECH STEPS - 1.wav by jdpstar -- https://freesound.org/s/538402/ -- License: Attribution 4.0
--- lighter: Butane Lighter Flip Open by Alexsani -- https://freesound.org/s/130788/ -- License: Creative Commons 0
--- inhalte exhale: In & Out Breath by Sounds_Fab -- https://freesound.org/s/813664/ -- License: Attribution 4.0
--- ad jingle: Happy bouncey guitar audio logo (artxmpl-al-03) high by artxmp1 -- https://freesound.org/s/661921/ -- License: Attribution 4.0
--- hit: Major punch by janbezouska -- https://freesound.org/s/399183/ -- License: Creative Commons 0
--- death: Cinematic Impact Boom Metalic by EminYILDIRIM -- https://freesound.org/s/535413/ -- License: Creative Commons 0
--- ear ring: Ear Ringing Long (Extended Falloff) by deleted_user_9482149 -- https://freesound.org/s/456698/ -- License: Creative Commons 0
--- notification ping: Retro Inspect Sound, UI, or In-Game Notification.wav by LilMati -- https://freesound.org/s/658266/ -- License: Creative Commons 0
-
---hanger ambience: Industrial Hangar Ambience – Sci-Fi Factory & Heavy Machinery by TommasoMotteran -- https://freesound.org/s/875395/ -- License: Attribution 4.0
--- eerie ambience: Big Sci-Fi Ambience by IanStarGem -- https://freesound.org/s/269596/ -- License: Creative Commons 0
--- guitar song: Acoustic performance in Ableton Live by ValentinSosnitskiy -- https://freesound.org/s/511819/ -- License: Attribution 4.0
-
--- ad voice lines: [ElevenLabs]
-
-
---models: [Sketchfab]
--- speaker: https://sketchfab.com/3d-models/speakers-low-poly-b2e3d6ecef4e40d994066416c395bf0a is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/)
-
--- robot: "Lonely bot" (https://skfb.ly/6SIXZ) by Mr Gicu is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).
-
-## License
+The game uses third-party models, animations, sounds and fonts. Full credits and licenses are listed in the **in-game credits** of the released version on itch.io.
