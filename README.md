@@ -6,6 +6,8 @@ A 1-bit, third-person descent through a dystopian city block. Your account balan
 
 Made in 7 days for the [15th 1-Bit Game Jam](https://itch.io/jam/1-bit-jam-15) · Theme: *Everything has a price*
 
+Playable in the browser on itch.io: https://arnold-grw.itch.io/deducted
+
 > **Note:** For now, this repository contains an **outdated, incomplete snapshot** of the project, **not the released version**. It only includes the test scene and the basic components: the player with the different body states, NPCs and the collector enemies. Finished levels and the main menu are not part of it.
 
 ## Tech stack
